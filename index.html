@@ -1,75 +1,264 @@
-<!DOCTYPE html>
-<html>
+<html lang="en">
 	<head>
-		<title>My first three.js app</title>
+		<title>Ammo.js softbody cloth demo</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		
 		<style>
-			body { margin: 0; }
-			canvas { display: block; }
+			body {
+				color: #333;
+			}
 		</style>
 	</head>
 	<body>
-		<script src="js/three.js"></script>
-		<script>
-			// THINGS TO CHECK 
-			// We have the figures that can be done
-			// the process is create a scene and animate
-			// check how to make a scene where the user can move the camera with the mouse
-			// keep the objects where they are just move the camera as the examples
-			//Check why the heart is cut??
-			// check to move in z axis also 
+		<div id="info">Ammo.js physics soft body cloth demo<br>Press Q or A to move the arm.</div>
+		<div id="container"></div>
 
-			// Create the scene 
-			const scene = new THREE.Scene();
-			const camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
+		<script src="js/js/libs/ammo.wasm.js"></script>
 
-			const renderer = new THREE.WebGLRenderer();
-			renderer.setSize( window.innerWidth, window.innerHeight );
-			document.body.appendChild( renderer.domElement );
+		<script type="module">
 
-			//Create first geometry 
-			const geometry = new THREE.BoxGeometry();
-			const material = new THREE.MeshBasicMaterial( { color: 0x00ff00 } );
-			const cube = new THREE.Mesh( geometry, material );
-			scene.add( cube );
+			import * as THREE from './js/build/three.module.js';
 
-			//Make Shape of heart
-			let x = 0;
-			let y = 0;
-			const heartShape = new THREE.Shape() // From http://blog.burlock.org/html5/130-paths
-					.moveTo( x + 25, y + 25 )
-					.bezierCurveTo( x + 25, y + 25, x + 20, y, x, y )
-					.bezierCurveTo( x - 30, y, x - 30, y + 35, x - 30, y + 35 )
-					.bezierCurveTo( x - 30, y + 55, x - 10, y + 77, x + 25, y + 95 )
-					.bezierCurveTo( x + 60, y + 77, x + 80, y + 55, x + 80, y + 35 )
-					.bezierCurveTo( x + 80, y + 35, x + 80, y, x + 50, y )
-					.bezierCurveTo( x + 35, y, x + 25, y + 25, x + 25, y + 25 );
+			import Stats from './js/jsm/libs/stats.module.js';
 
-			const extrudeSettings = { amount: 8, bevelEnabled: true, bevelSegments: 2, steps: 2, bevelSize: 1, bevelThickness: 1 };
+			import { OrbitControls } from './js/jsm/controls/OrbitControls.js';
 
-			const geometry2 = new THREE.ExtrudeBufferGeometry( heartShape, extrudeSettings );
-			const material2 = new THREE.MeshBasicMaterial( { color: 0x00ff00 } );
-			const mesh = new THREE.Mesh( geometry2, material2 );
-			scene.add( mesh);
+			// Graphics variables
+			let container, stats;
+			let camera, controls, scene, renderer;
+			let textureLoader;
+			const clock = new THREE.Clock();
 
-			// Position of camera
-			camera.position.z = 200;
+			// Physics variables
+			const gravityConstant = - 9.8;
+			let physicsWorld;
+			const rigidBodies = [];
+			const margin = 0.05;
+			let hinge;
+			let cloth;
+			let transformAux1;
 
-			//Animate the scene to render the elements
-			// required for the elements to be seen in the screen
-			const animate = function () {
+			let armMovement = 0;
+
+			Ammo().then( function ( AmmoLib ) {
+
+				Ammo = AmmoLib;
+
+				init();
+				animate();
+
+			} );
+
+
+			function init() {
+
+				initGraphics();
+
+				//initPhysics();
+
+				createObjects();
+
+				initInput();
+
+			}
+
+			function initGraphics() {
+
+				container = document.getElementById( 'container' );
+
+				camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 0.2, 2000 );
+
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0xbfd1e5 );
+
+				camera.position.set( - 12, 7, 4 );
+
+				renderer = new THREE.WebGLRenderer();
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.shadowMap.enabled = true;
+				container.appendChild( renderer.domElement );
+
+				controls = new OrbitControls( camera, renderer.domElement );
+				controls.target.set( 0, 2, 0 );
+				controls.update();
+
+				textureLoader = new THREE.TextureLoader();
+
+				const ambientLight = new THREE.AmbientLight( 0x404040 );
+				scene.add( ambientLight );
+
+				const light = new THREE.DirectionalLight( 0xffffff, 1 );
+				light.position.set( - 7, 10, 15 );
+				light.castShadow = true;
+				const d = 10;
+				light.shadow.camera.left = - d;
+				light.shadow.camera.right = d;
+				light.shadow.camera.top = d;
+				light.shadow.camera.bottom = - d;
+
+				light.shadow.camera.near = 2;
+				light.shadow.camera.far = 50;
+
+				light.shadow.mapSize.x = 1024;
+				light.shadow.mapSize.y = 1024;
+
+				light.shadow.bias = - 0.003;
+				scene.add( light );
+
+				stats = new Stats();
+				stats.domElement.style.position = 'absolute';
+				stats.domElement.style.top = '0px';
+				container.appendChild( stats.domElement );
+
+				window.addEventListener( 'resize', onWindowResize, false );
+
+			}
+
+			function createGround(position, size, texturepath, repeat = true){
+				const pos = new THREE.Vector3();
+				const quat = new THREE.Quaternion();
+
+				// Ground Right 
+				pos.set( 0, - 0.5, position );
+				quat.set( 0, 0, 0, 1 );
+				const groundR = createParalellepiped( 40, 1, size, 0, pos, quat, new THREE.MeshPhongMaterial( { color: 0xFFFFFF } ) );
+				
+				groundR.castShadow = true;
+				groundR.receiveShadow = true;
+				textureLoader.load( texturepath, function ( texture ) {
+
+					texture.wrapS = THREE.RepeatWrapping;
+					texture.wrapT = THREE.RepeatWrapping;
+					if(repeat){
+						texture.repeat.set( 40, 40 );
+					}
+					groundR.material.map = texture;
+					groundR.material.needsUpdate = true;
+
+				} );
+				return groundR;
+
+			}
+
+			function createObjects() {
+				//ground right and ground left 
+				createGround(10,10,"./js/textures/terrain/grasslight-big.jpg");
+
+				createGround(-10,10,"./js/textures/terrain/grasslight-big.jpg");
+
+				createGround(0,10,"./js/textures/street/street.jpg", false);
+				//Street
+
+			}
+
+			function createParalellepiped( sx, sy, sz, mass, pos, quat, material ) {
+
+				const threeObject = new THREE.Mesh( new THREE.BoxBufferGeometry( sx, sy, sz, 1, 1, 1 ), material );
+				const shape = new Ammo.btBoxShape( new Ammo.btVector3( sx * 0.5, sy * 0.5, sz * 0.5 ) );
+				shape.setMargin( margin );
+
+				createRigidBody( threeObject, shape, mass, pos, quat );
+
+				return threeObject;
+
+			}
+
+			function createRigidBody( threeObject, physicsShape, mass, pos, quat ) {
+
+				threeObject.position.copy( pos );
+				threeObject.quaternion.copy( quat );
+
+				const transform = new Ammo.btTransform();
+				transform.setIdentity();
+				transform.setOrigin( new Ammo.btVector3( pos.x, pos.y, pos.z ) );
+				transform.setRotation( new Ammo.btQuaternion( quat.x, quat.y, quat.z, quat.w ) );
+				const motionState = new Ammo.btDefaultMotionState( transform );
+
+				const localInertia = new Ammo.btVector3( 0, 0, 0 );
+				physicsShape.calculateLocalInertia( mass, localInertia );
+
+				const rbInfo = new Ammo.btRigidBodyConstructionInfo( mass, motionState, physicsShape, localInertia );
+				const body = new Ammo.btRigidBody( rbInfo );
+
+				threeObject.userData.physicsBody = body;
+
+				scene.add( threeObject );
+
+				if ( mass > 0 ) {
+
+					rigidBodies.push( threeObject );
+
+					// Disable deactivation
+					body.setActivationState( 4 );
+
+				}
+			}
+
+			function createMaterial() {
+
+				return new THREE.MeshPhongMaterial( { color: createRandomColor() } );
+
+			}
+
+			function initInput() {
+
+				window.addEventListener( 'keydown', function ( event ) {
+
+					switch ( event.keyCode ) {
+
+						// Q
+						case 81:
+							armMovement = 1;
+							break;
+
+							// A
+						case 65:
+							armMovement = - 1;
+							break;
+
+					}
+
+				}, false );
+
+				window.addEventListener( 'keyup', function () {
+
+					armMovement = 0;
+
+				}, false );
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function animate() {
+
 				requestAnimationFrame( animate );
 
-				//cube.rotation.x;
-				//cube.rotation.y;
-				console.log(mesh);
-				mesh;				
-				mesh.rotation.x += 0.01;
-				//mesh.rotation.y += 0.01;
+				render();
+				stats.update();
+
+			}
+
+			function render() {
+
+				const deltaTime = clock.getDelta();
+
+				//updatePhysics( deltaTime );
 
 				renderer.render( scene, camera );
-			};
 
-			animate();
+			}
+
 		</script>
+
 	</body>
 </html>
