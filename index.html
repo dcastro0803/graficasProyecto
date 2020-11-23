@@ -520,6 +520,44 @@
 				positionGround = -10
 				createBox(new THREE.Vector3(-10, -0.5, 0), ZERO_QUATERNION, 10, 1, 45, 0, 2,"./js/textures/terrain/grasslight-big.jpg" );
 				
+				// Creating finish lane frame
+				// ON CAR PERSEPCTIVE:
+				// Vector = RIGHT/LEFT; UP/DOWN; FRONT/BACK
+				// LATERAL WIDTH; HEIGHT; FRONTAL WIDTH
+				createBox(new THREE.Vector3(8, 4, 10), ZERO_QUATERNION, 1, 10, 1, 0, "./js/textures/terrain/grasslight-big.jpg")
+				createBox(new THREE.Vector3(-8, 4, 10), ZERO_QUATERNION, 1, 10, 1, 0, "./js/textures/terrain/grasslight-big.jpg")
+				createBox(new THREE.Vector3(0, 8, 10), ZERO_QUATERNION, 20, 4, 3, 0, "./js/textures/terrain/grasslight-big.jpg")
+
+				function createCyl(pos, radius, width) {
+					var t = new THREE.CylinderGeometry(radius, radius, width, 24, 1);
+					var mesh = new THREE.Mesh(t, materialInteractive);
+					mesh.position.copy(pos)
+					scene.add(mesh);
+					return mesh;
+				}
+
+				function createSphere(pos, radius){
+					var t = new THREE.SphereGeometry(radius, 24, 24);
+					var mesh = new THREE.Mesh(t, materialInteractive);
+					mesh.position.copy(pos)
+					scene.add(mesh);
+					return mesh;
+				}
+
+
+				function createTree(x, y, height){
+					let leavesHeigtRel = height/2;
+					let leavesMin = leavesHeigtRel * 0.8
+					let leavesMax = leavesHeigtRel - leavesMin;
+					createCyl(new THREE.Vector3(x,4,y), 1,height)
+					createSphere(new THREE.Vector3(x,8,y), leavesMin+Math.random()*100%leavesMax)
+				}
+
+				// Creating trees
+				createTree(10,7,10)
+				createTree(-10,-11,10)
+				createTree(7,-17,10)
+
 				//Create the car 
 				createVehicle(new THREE.Vector3(0, 4, -20), ZERO_QUATERNION);
 
